@@ -38,7 +38,7 @@ export class ConstraintEngine {
         // For now, linear
 
         const startTime = Date.now();
-        const TIMEOUT_MS = 3000;
+        const TIMEOUT_MS = 30000; // Increased to 30 seconds to try harder before giving up
 
         const schedule: IShift[] = [];
         const result = this.backtrack(shiftsToFill, 0, schedule, staff, relaxConstraints, startTime, TIMEOUT_MS);
@@ -70,8 +70,19 @@ export class ConstraintEngine {
         }
 
         const shift = shifts[index];
-        // randomize staff order to get different results?
-        const shuffledStaff = [...staff].sort(() => 0.5 - Math.random());
+        // Heuristic: Try staff with fewer shifts first to avoid hitting quotas early
+        // This spreads the load and reduces backtracking
+        const currentCounts = new Map<string, number>();
+        currentSchedule.forEach(s => {
+            if (s.assignedToId) currentCounts.set(s.assignedToId, (currentCounts.get(s.assignedToId) || 0) + 1);
+        });
+
+        const shuffledStaff = [...staff].sort((a, b) => {
+            const countA = currentCounts.get(a.id) || 0;
+            const countB = currentCounts.get(b.id) || 0;
+            if (countA === countB) return 0.5 - Math.random(); // Randomize if equal
+            return countA - countB; // Least shifts first
+        });
 
         for (const person of shuffledStaff) {
             // Validate
