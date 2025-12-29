@@ -34,6 +34,10 @@ const Scheduler: React.FC = () => {
     const [savedSchedules, setSavedSchedules] = useState<SavedSchedule[]>([]);
     const [isSavedListOpen, setIsSavedListOpen] = useState(false);
 
+    // Timeout/Error Modal State
+    const [isTimeoutModalOpen, setIsTimeoutModalOpen] = useState(false);
+    const [timeoutModalType, setTimeoutModalType] = useState<'timeout' | 'strict'>('strict');
+
     // Load saved schedules on mount
     useEffect(() => {
         const saved = localStorage.getItem('saved_schedules');
@@ -87,6 +91,9 @@ const Scheduler: React.FC = () => {
     const runGeneration = (relaxed: boolean) => {
         if (!dateRange) return;
         setLoading(true);
+        // Reset modals
+        setIsTimeoutModalOpen(false);
+
         setTimeout(() => {
             try {
                 const startDate = dateRange[0];
@@ -145,17 +152,12 @@ const Scheduler: React.FC = () => {
             } catch (error: any) {
                 console.error(error);
                 if (!relaxed) {
-                    // Check if error is specifically TIMEOUT or general strict failure
-                    const isTimeout = error.message === 'TIMEOUT' || error.message.includes("Could not generate");
+                    const isTimeout = error.message === 'TIMEOUT';
+                    const isStrictFailure = error.message.includes("Could not generate");
 
-                    if (isTimeout) {
-                        Modal.confirm({
-                            title: t('scheduler.timeoutOrStrict'),
-                            content: t('scheduler.timeoutDesc'),
-                            okText: t('common.yes'),
-                            cancelText: t('common.no'),
-                            onOk: () => runGeneration(true)
-                        });
+                    if (isTimeout || isStrictFailure) {
+                        setTimeoutModalType(isTimeout ? 'timeout' : 'strict');
+                        setIsTimeoutModalOpen(true);
                     } else {
                         notification.error({
                             message: t('scheduler.error'),
@@ -254,6 +256,25 @@ const Scheduler: React.FC = () => {
                     onPressEnter={handleSaveSchedule}
                 />
             </Modal>
+
+            {/* Timeout / Strict Rules Modal - Custom Footer for Button Order */}
+            <Modal
+                title={t('scheduler.timeoutOrStrict')}
+                open={isTimeoutModalOpen}
+                onCancel={() => setIsTimeoutModalOpen(false)}
+                footer={[
+                    // Custom order: Yes (Evet) first, then No (Hayır)
+                    <Button key="yes" type="primary" onClick={() => runGeneration(true)}>
+                        {t('common.yes')}
+                    </Button>,
+                    <Button key="no" onClick={() => setIsTimeoutModalOpen(false)}>
+                        {t('common.no')}
+                    </Button>
+                ]}
+            >
+                <p>{t('scheduler.timeoutDesc')}</p>
+            </Modal>
+
 
             {/* Saved Schedules Drawer */}
             <Drawer
