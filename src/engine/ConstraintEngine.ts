@@ -38,7 +38,7 @@ export class ConstraintEngine {
         // For now, linear
 
         const startTime = Date.now();
-        const TIMEOUT_MS = 30000; // Increased to 30 seconds to try harder before giving up
+        const TIMEOUT_MS = 3000; // Reverted to 3 seconds as requested
 
         const schedule: IShift[] = [];
         const result = this.backtrack(shiftsToFill, 0, schedule, staff, relaxConstraints, startTime, TIMEOUT_MS);
