@@ -36,7 +36,6 @@ const Scheduler: React.FC = () => {
 
     // Timeout/Error Modal State
     const [isTimeoutModalOpen, setIsTimeoutModalOpen] = useState(false);
-    const [timeoutModalType, setTimeoutModalType] = useState<'timeout' | 'strict'>('strict');
 
     // Load saved schedules on mount
     useEffect(() => {
@@ -156,7 +155,6 @@ const Scheduler: React.FC = () => {
                     const isStrictFailure = error.message.includes("Could not generate");
 
                     if (isTimeout || isStrictFailure) {
-                        setTimeoutModalType(isTimeout ? 'timeout' : 'strict');
                         setIsTimeoutModalOpen(true);
                     } else {
                         notification.error({
