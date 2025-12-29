@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Button, Card, DatePicker, Typography, Spin, notification, Modal } from 'antd';
+import React, { useState, useEffect } from 'react';
+import { Button, Card, DatePicker, Typography, Spin, notification, Modal, Input, List, Empty, Popconfirm, Drawer, Badge } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../context/AppContext';
 import { ConstraintEngine } from '../engine/ConstraintEngine';
@@ -8,9 +8,18 @@ import dayjs from 'dayjs';
 import ScheduleResults from './ScheduleResults';
 import ScheduleTable from './ScheduleTable';
 import { v4 as uuidv4 } from 'uuid';
+import { SaveOutlined, UnorderedListOutlined, DeleteOutlined, EyeOutlined } from '@ant-design/icons';
 
 const { RangePicker } = DatePicker;
-const { Title, Paragraph } = Typography;
+const { Title, Paragraph, Text } = Typography;
+
+interface SavedSchedule {
+    id: string;
+    name: string;
+    createdAt: string;
+    schedule: IShift[];
+    dateRange: [string, string]; // ISO strings
+}
 
 const Scheduler: React.FC = () => {
     const { t } = useTranslation();
@@ -18,6 +27,62 @@ const Scheduler: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [generatedSchedule, setGeneratedSchedule] = useState<IShift[] | null>(null);
     const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
+
+    // Save Feature State
+    const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
+    const [scheduleName, setScheduleName] = useState('');
+    const [savedSchedules, setSavedSchedules] = useState<SavedSchedule[]>([]);
+    const [isSavedListOpen, setIsSavedListOpen] = useState(false);
+
+    // Load saved schedules on mount
+    useEffect(() => {
+        const saved = localStorage.getItem('saved_schedules');
+        if (saved) {
+            try {
+                setSavedSchedules(JSON.parse(saved));
+            } catch (e) {
+                console.error("Failed to parse saved schedules", e);
+            }
+        }
+    }, []);
+
+    const saveToLocalStorage = (schedules: SavedSchedule[]) => {
+        localStorage.setItem('saved_schedules', JSON.stringify(schedules));
+        setSavedSchedules(schedules);
+    };
+
+    const handleSaveSchedule = () => {
+        if (!scheduleName.trim() || !generatedSchedule || !dateRange) return;
+
+        const newSaved: SavedSchedule = {
+            id: uuidv4(),
+            name: scheduleName,
+            createdAt: new Date().toISOString(),
+            schedule: generatedSchedule,
+            dateRange: [dateRange[0].toISOString(), dateRange[1].toISOString()]
+        };
+
+        const updated = [newSaved, ...savedSchedules];
+        saveToLocalStorage(updated);
+        setIsSaveModalOpen(false);
+        setScheduleName('');
+        notification.success({ message: t('common.success') });
+    };
+
+    const handleDeleteSaved = (id: string) => {
+        const updated = savedSchedules.filter(s => s.id !== id);
+        saveToLocalStorage(updated);
+        notification.success({ message: t('common.deleted') });
+    };
+
+    const handleLoadSaved = (saved: SavedSchedule) => {
+        setGeneratedSchedule(saved.schedule);
+        setDateRange([dayjs(saved.dateRange[0]), dayjs(saved.dateRange[1])]);
+        setIsSavedListOpen(false);
+
+        // Scroll to top
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
 
     const runGeneration = (relaxed: boolean) => {
         if (!dateRange) return;
@@ -71,34 +136,10 @@ const Scheduler: React.FC = () => {
                 }
 
                 const result = engine.generate(shiftsToFill, staff, relaxed);
-                // Wait, ConstraintEngine.generate signatures is generate(shifts, staff, relax) OR generate(shifts, staff, onProgress)? 
-                // Let's check ConstraintEngine.ts.
-
-                // Oops, I saw I replaced the method signature in ConstraintEngine to take relaxed as 3rd arg.
-                // But the error says: Argument of type 'boolean' is not assignable to parameter of type '(count: number) => void'.
-                // This means the signature IS generate(shifts, staff, onProgress).
-
-                // I need to update ConstraintEngine.ts to accept relaxed as 3rd or 4th argument, or change the call.
-                // Let's assume I modify ConstraintEngine signature to: generate(shifts, staff, relax, onProgress) or similar.
-
-                // Actually, I'll update ConstraintEngine.ts to be explicitly clean.
-                // But for now, let's just make sure we are calling it right.
-                // The previous edit to ConstraintEngine might have failed or I misread the error.
-                // Re-reading ConstraintEngine:
-                // public generate(shiftsToFill: IShift[], staff: IPerson[], _onProgress?: (count: number) => void): IShift[]
-
-                // I tried to update it to: generate(shifts: IShift[], staff: IPerson[], relaxConstraints: boolean = false): IShift[]
-
-                // But it seems it didn't apply or I was looking at old cached file content.
-                // I will ignore this specific replace and fix ConstraintEngine.ts to match what I WANT.
-
-                // FOR NOW, to fix build quickly, I will fix ConstraintEngine.ts FIRST in next step.
-                // So here I will leave this as is? No, I want 'relaxed' to be passed.
-                // I will pretend ConstraintEngine is fixed.
                 setGeneratedSchedule(result);
                 notification.success({
-                    message: relaxed ? t('scheduler.optimumSuccess', 'Optimum Schedule Generated') : t('scheduler.success', 'Schedule generated successfully!'),
-                    description: relaxed ? t('scheduler.optimumDesc', 'Some quotas may have been relaxed to find a solution.') : undefined
+                    message: relaxed ? t('scheduler.optimumSuccess') : t('scheduler.success'),
+                    description: relaxed ? t('scheduler.optimumDesc') : undefined
                 });
 
             } catch (error: any) {
@@ -109,21 +150,21 @@ const Scheduler: React.FC = () => {
 
                     if (isTimeout) {
                         Modal.confirm({
-                            title: t('scheduler.timeoutOrStrict', 'Constraints too tight or Calculation Timed Out'),
-                            content: t('scheduler.timeoutDesc', 'The schedule is very hard to generate with current rules. Would you like to generate the best possible schedule by relaxing quota limits?'),
+                            title: t('scheduler.timeoutOrStrict'),
+                            content: t('scheduler.timeoutDesc'),
                             okText: t('common.yes'),
                             cancelText: t('common.no'),
                             onOk: () => runGeneration(true)
                         });
                     } else {
                         notification.error({
-                            message: t('scheduler.error', 'Error'),
+                            message: t('scheduler.error'),
                             description: error.message
                         });
                     }
                 } else {
                     notification.error({
-                        message: t('scheduler.failure', 'Failed to generate schedule'),
+                        message: t('scheduler.failure'),
                         description: error.message
                     });
                 }
@@ -135,12 +176,26 @@ const Scheduler: React.FC = () => {
 
     return (
         <div style={{ padding: 24, minHeight: '100%' }}>
-            <Title level={4}>{t('scheduler.title', 'Shift Scheduler')}</Title>
-            <Paragraph>{t('scheduler.desc', 'Select a date range to generate the schedule automatically.')}</Paragraph>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+                <div>
+                    <Title level={4}>{t('scheduler.title')}</Title>
+                    <Paragraph>{t('scheduler.desc')}</Paragraph>
+                </div>
+                <Button
+                    icon={<UnorderedListOutlined />}
+                    onClick={() => setIsSavedListOpen(true)}
+                >
+                    {t('savedSchedules.title')} <Badge count={savedSchedules.length} offset={[10, -5]} color="blue" />
+                </Button>
+            </div>
 
             <Card style={{ marginBottom: 24 }}>
-                <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-                    <RangePicker onChange={(dates) => setDateRange(dates as any)} />
+                <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <RangePicker
+                        value={dateRange}
+                        onChange={(dates) => setDateRange(dates as any)}
+                        style={{ minWidth: 250 }}
+                    />
                     <Button
                         type="primary"
                         size="large"
@@ -148,7 +203,7 @@ const Scheduler: React.FC = () => {
                         loading={loading}
                         disabled={!dateRange}
                     >
-                        {loading ? t('scheduler.calculating', 'Calculating...') : t('scheduler.generate', 'Generate Schedule')}
+                        {loading ? t('scheduler.calculating') : t('scheduler.generate')}
                     </Button>
                 </div>
             </Card>
@@ -163,11 +218,92 @@ const Scheduler: React.FC = () => {
                         departments={departments}
                         onUpdateShifts={setGeneratedSchedule}
                     />
+
+                    <div style={{ marginTop: 24, display: 'flex', justifyContent: 'flex-end', marginBottom: 40 }}>
+                        <Button
+                            type="primary"
+                            size="large"
+                            icon={<SaveOutlined />}
+                            onClick={() => setIsSaveModalOpen(true)}
+                            style={{ background: '#52c41a' }}
+                        >
+                            {t('common.save')}
+                        </Button>
+                    </div>
+
                     <div style={{ marginTop: 24 }}>
                         <ScheduleResults shifts={generatedSchedule} staff={staff} departments={departments} />
                     </div>
                 </>
             )}
+
+            {/* Save Modal */}
+            <Modal
+                title={t('savedSchedules.saveTitle')}
+                open={isSaveModalOpen}
+                onOk={handleSaveSchedule}
+                onCancel={() => setIsSaveModalOpen(false)}
+                okText={t('common.save')}
+                cancelText={t('common.cancel')}
+            >
+                <p>{t('savedSchedules.saveDesc')}</p>
+                <Input
+                    placeholder={t('savedSchedules.namePlaceholder')}
+                    value={scheduleName}
+                    onChange={(e) => setScheduleName(e.target.value)}
+                    onPressEnter={handleSaveSchedule}
+                />
+            </Modal>
+
+            {/* Saved Schedules Drawer */}
+            <Drawer
+                title={t('savedSchedules.title')}
+                placement="right"
+                onClose={() => setIsSavedListOpen(false)}
+                open={isSavedListOpen}
+                width={400}
+            >
+                {savedSchedules.length === 0 ? (
+                    <Empty description={t('savedSchedules.empty')} />
+                ) : (
+                    <List
+                        dataSource={savedSchedules}
+                        renderItem={(item) => (
+                            <List.Item
+                                actions={[
+                                    <Button
+                                        type="text"
+                                        icon={<EyeOutlined />}
+                                        onClick={() => handleLoadSaved(item)}
+                                    >
+                                        {t('savedSchedules.load')}
+                                    </Button>,
+                                    <Popconfirm
+                                        title={t('savedSchedules.confirmDelete')}
+                                        onConfirm={() => handleDeleteSaved(item.id)}
+                                        okText={t('common.yes')}
+                                        cancelText={t('common.no')}
+                                    >
+                                        <Button type="text" danger icon={<DeleteOutlined />} key="delete" />
+                                    </Popconfirm>
+                                ]}
+                            >
+                                <List.Item.Meta
+                                    title={item.name}
+                                    description={
+                                        <div>
+                                            <div>{dayjs(item.dateRange[0]).format('DD.MM.YYYY')} - {dayjs(item.dateRange[1]).format('DD.MM.YYYY')}</div>
+                                            <Text type="secondary" style={{ fontSize: '0.8em' }}>
+                                                {t('savedSchedules.date')}: {dayjs(item.createdAt).format('DD.MM.YYYY HH:mm')}
+                                            </Text>
+                                        </div>
+                                    }
+                                />
+                            </List.Item>
+                        )}
+                    />
+                )}
+            </Drawer>
         </div>
     );
 };

@@ -72,10 +72,29 @@ export const resources = {
                     title: 'Specific Date Permits',
                     desc: 'Manage specific dates where staff are permitted (or restricted).',
                 },
-                schedule: {
+                scheduler: {
                     title: 'Schedule',
                     resultsTitle: 'Schedule Results',
-                    generate: 'Generate Schedule'
+                    generate: 'Generate Schedule',
+                    optimumSuccess: 'Optimum Schedule Generated',
+                    optimumDesc: 'Some quotas may have been relaxed to find a solution.',
+                    timeoutOrStrict: 'Constraints too tight or Calculation Timed Out',
+                    timeoutDesc: 'The schedule is very hard to generate with current rules. Would you like to generate the best possible schedule by relaxing quota limits?',
+                    error: 'Error',
+                    failure: 'Failed to generate schedule',
+                    calculating: 'Calculating...',
+                    desc: 'Select a date range to generate the schedule automatically.',
+                    success: 'Schedule generated successfully!'
+                },
+                savedSchedules: {
+                    title: 'Saved Schedules',
+                    saveTitle: 'Save Schedule',
+                    saveDesc: 'Please enter a name for this schedule.',
+                    namePlaceholder: 'e.g. January 2024',
+                    confirmDelete: 'Are you sure you want to delete this saved schedule?',
+                    load: 'View',
+                    empty: 'No saved schedules yet.',
+                    date: 'Date Created'
                 },
                 departments: {
                     title: 'Departments',
@@ -194,7 +213,7 @@ export const resources = {
                     selectFiles: 'Grup Üyeleri'
                 }
             },
-            schedule: {
+            scheduler: {
                 title: 'Otomatik Nöbet Oluşturucu',
                 resultsTitle: 'Oluşturulan Taslak Liste',
                 generate: 'Listeyi Oluştur',
@@ -205,7 +224,22 @@ export const resources = {
                 calculating: 'Yapay Zeka Hesaplanıyor...',
                 desc: 'Tarih aralığını seçip kısıtlamalara uygun en iyi listeyi oluşturun.',
                 swapped: 'Nöbet Değiştirildi!',
-                selectTarget: '{{name}} seçildi. Değiştirmek için diğer personele tıklayın.'
+                selectTarget: '{{name}} seçildi. Değiştirmek için diğer personele tıklayın.',
+                optimumSuccess: 'Optimum Liste Oluşturuldu',
+                optimumDesc: 'Çözüm bulmak için bazı kotalar esnetildi.',
+                timeoutOrStrict: 'Kısıtlamalar Çok Sıkı veya Zaman Aşımı',
+                timeoutDesc: 'Mevcut kurallarla liste oluşturmak çok zor. Kota sınırlarını esneterek en iyi olası listeyi oluşturmak ister misiniz?',
+                error: 'Hata'
+            },
+            savedSchedules: {
+                title: 'Kayıtlı Listeler',
+                saveTitle: 'Listeyi Kaydet',
+                saveDesc: 'Lütfen bu liste için bir isim giriniz.',
+                namePlaceholder: 'Örn: Ocak 2024 Nöbet Listesi',
+                confirmDelete: 'Bu kayıtlı listeyi silmek istediğinize emin misiniz?',
+                load: 'Görüntüle',
+                empty: 'Henüz kaydedilmiş bir liste yok.',
+                date: 'Oluşturma Tarihi'
             },
             departments: {
                 title: 'Bölüm ve Vardiya Yapılandırması',
