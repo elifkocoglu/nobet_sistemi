@@ -80,9 +80,26 @@ export class ConstraintEngine {
         // 3. Quota: Dynamic urgency.
 
         const scoredStaff = staff.map(person => {
-            let score = 10000; // High Base Score
+            let score = 1000; // Base Score
 
-            const count = currentCounts.get(person.id) || 0;
+            // Count only NON-DAY shifts for Quota Purposes
+            // (Assumes `currentCounts` is total, we need specific counts)
+            // Re-calculating counts inside loop is expensive (O(N*M)).
+            // Better to pre-calculate map of { id: { total: x, nobet: y } }.
+
+            // Optimization: Since we already computed `currentCounts` (Total), we can't trust it for Quota.
+            // Let's just do a quick filter here for the person.
+            // Actually, let's optimize the pre-calculation outside.
+            // But for now, let's rely on `currentCounts` being inaccurate and fix it?
+            // No, easier to just check currentSchedule for this person.
+            let nobetCount = 0;
+            currentSchedule.forEach(s => {
+                if (s.assignedToId === person.id && s.type !== 'day') nobetCount++;
+            });
+
+            const count = nobetCount; // Use Nöbet count for Quota logic
+            // const totalCount = currentCounts.get(person.id) || 0; // Unused for now
+
             const target = person.exactShifts !== undefined ? person.exactShifts : person.minShifts;
 
             // 1. QUOTA URGENCY (Absolute Priority)
@@ -106,6 +123,9 @@ export class ConstraintEngine {
 
             // 3. DISTRIBUTION (Quadratic Fair Penalty)
             // Punish high counts severely to force equality.
+            // Use TOTAL count here (including Mesai) for overall workload fairness?
+            // Or just Nöbet fairness? Usually Nöbet fairness is what matters.
+            // Let's use Nöbet Count for fairness to ensure Nöbet equality.
             score -= (count * count * 100);
 
             // 4. SPACING (Gap Bonus)

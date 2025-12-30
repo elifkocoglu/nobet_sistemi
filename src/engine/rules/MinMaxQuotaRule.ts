@@ -7,7 +7,11 @@ export class MinMaxQuotaRule implements IRule {
 
     validate(_shift: IShift, person: IPerson, assignedShifts: IShift[], isRelaxed?: boolean): IRuleResult {
         // Count existing shifts for this person
-        const personShifts = assignedShifts.filter(s => s.assignedToId === person.id);
+        // Count existing shifts for this person
+        // NOTE: Quotas apply to "Nöbet" (24h/Night). "Mesai" (Day) shifts should typically NOT count towards quota.
+        // User feedback implies they set Min 4 Nöbet, but person had 2 Mesai + 2 Nobet used up quota.
+        // Let's filter for NON-DAY shifts.
+        const personShifts = assignedShifts.filter(s => s.assignedToId === person.id && s.type !== 'day');
         const currentCount = personShifts.length;
 
         // If Relaxed Mode is ON:
