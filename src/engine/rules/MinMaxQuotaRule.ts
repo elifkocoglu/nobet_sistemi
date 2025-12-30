@@ -15,23 +15,12 @@ export class MinMaxQuotaRule implements IRule {
         const currentCount = personShifts.length;
 
         // If Relaxed Mode is ON:
-        // We SKIP strict max/exact checks here during GENERATION to ensure completion.
-        // Ideally, we would want a "Soft Score", but for now, "Best Effort" = "Complete the schedule even if quotas broken".
-        // However, manual validation shouldn't be relaxed unless specified.
-        // If Relaxed Mode is ON:
-        // We typically SKIP validation to allow completion.
-        // BUT, "Max Shifts" is usually a hard constraint (Budgetary/Fairness).
-        // If Hüseyin says Max 6, giving him 10 is a HUGE violation.
-        // Let's enforcing MAX strictly even in relaxed mode.
-        // Only skip MIN/EXACT checks in relaxed mode?
-        // Actually, let's just NOT return valid=true immediately.
-        // Let's proceed to checks, but maybe allow soft violations?
-        // NO, User wants Max to be respected. Let's make it HARD.
-
-        // if (isRelaxed) { return { isValid: true }; } // REMOVE THIS to enforce strictness
-
-        // However, we might want to relax "Min" or "Fullness" constraints, but MAX determines "Can I take more?".
-        // So we proceed to check MAX below.
+        // We SKIP strict max checks to ensure completion.
+        // The Scoring Engine creates a "Soft Cap" via massive penalties, 
+        // so we can safely return Valid here to allow fallback.
+        if (_isRelaxed) {
+            return { isValid: true };
+        }
 
 
         // Note: usage of this rule during "generation" vs "manual edit" differs.

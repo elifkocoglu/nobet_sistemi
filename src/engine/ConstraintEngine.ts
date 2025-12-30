@@ -36,7 +36,8 @@ export class ConstraintEngine {
     ): IShift[] {
         // Simple Backtracking Algorithm
         const startTime = Date.now();
-        const TIMEOUT_MS = 3000;
+        const startTime = Date.now();
+        const TIMEOUT_MS = 5000; // Increased to 5s for robust pre-calc
 
         // PRE-CALCULATE VALIDITY COUNTS (Critical for Ratio Scoring)
         // We need to know: How many shifts *could* Aysun possibly take?
@@ -161,14 +162,15 @@ export class ConstraintEngine {
             score -= (count * count * 100);
 
             // 3.5 MAX LIMIT AVERSION (Soft Cap)
-            // If someone is close to their MAX (e.g. 1 away), we should try to avoid them if possible,
-            // to leave room for emergency fills or manual adjustments later.
-            if (person.maxShifts !== undefined && count >= person.maxShifts - 1) {
+            if (person.maxShifts !== undefined && count >= person.maxShifts) {
+                // Already AT Max (or above).
+                // Penalize EXTREMELY (-100M) to avoid exceeding unless desperate.
+                // This acts as a "Hard Constraint" that can be broken if no other option exists.
+                score -= 100000000;
+            } else if (person.maxShifts !== undefined && count >= person.maxShifts - 1) {
                 // They are 1 shift away from Max.
-                // Penalize them heavily so Büşra/Şenol (who have room) get picked instead.
-                score -= 10000000; // HUGE penalty to force rotation (Unless quota urgency overrides)
-                // But Quota Urgency is +50-100M. So Quota wins.
-                // If Quota met (remaining <= 0), this penalty prevents exceeding Max. perfect.
+                // Penalize heavily (-10k) so others get picked first.
+                score -= 10000;
             }
 
             // 4. SPACING (Gap Bonus)
