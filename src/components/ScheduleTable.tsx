@@ -205,7 +205,32 @@ const ScheduleTable: React.FC<ScheduleTableProps> = ({ shifts, staff, department
 
     return (
         <div style={{ background: '#fff', padding: 16, borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
+            {/* Shift Summary Stats */}
+            <div style={{ marginBottom: 24, padding: 16, background: '#fafafa', borderRadius: 8, border: '1px solid #f0f0f0' }}>
+                <Title level={5} style={{ marginBottom: 12 }}>{t('scheduler.shiftSummary', 'Personel Nöbet/Mesai Özeti')}</Title>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
+                    {staff.map(person => {
+                        const personShifts = shifts.filter(s => s.assignedToId === person.id);
+                        const mesaiCount = personShifts.filter(s => s.type === 'day').length;
+                        const nobetCount = personShifts.filter(s => s.type === '24h' || s.type === 'night').length;
+
+                        // if (mesaiCount === 0 && nobetCount === 0) return null; // Show all staff even with 0 shifts
+                        // Actually show all staff
+                        return (
+                            <div key={person.id} style={{ padding: '8px 12px', background: '#fff', borderRadius: 6, border: '1px solid #e0e0e0', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+                                <div style={{ fontWeight: 600, marginBottom: 4 }}>{person.name}</div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                                    <span style={{ color: '#e91e63' }}>Mesai: <b>{mesaiCount}</b></span>
+                                    <span style={{ color: '#2196f3' }}>Nöbet: <b>{nobetCount}</b></span>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+
             <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+
                 <Space>
                     <Title level={5} style={{ margin: 0 }}>{t('scheduler.scheduleTable')}</Title>
                     {/* Legend */}
