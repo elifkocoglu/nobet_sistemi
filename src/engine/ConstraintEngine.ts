@@ -96,7 +96,15 @@ export class ConstraintEngine {
             if (isAIgnored && !isBIgnored) return 1;
             if (!isAIgnored && isBIgnored) return -1;
 
-            // Standard Equality Logic
+            // 2. Min Quota Priority (New)
+            // If a person is below their MIN quota, they should be prioritized over those who met it (or have no quota).
+            const aBelowMin = a.minShifts !== undefined && (currentCounts.get(a.id) || 0) < a.minShifts;
+            const bBelowMin = b.minShifts !== undefined && (currentCounts.get(b.id) || 0) < b.minShifts;
+
+            if (aBelowMin && !bBelowMin) return -1;
+            if (!aBelowMin && bBelowMin) return 1;
+
+            // 3. Standard Equality Logic
             // If Strict Equality is OFF, maybe just randomise? or still try to balance but loosely?
             // "Sistem diğer kısıtları karşılamak için nöbetleri eşit dağıtmasın" -> Don't sort by count?
             if (equalityConfig && !equalityConfig.applyStrictEquality) {
