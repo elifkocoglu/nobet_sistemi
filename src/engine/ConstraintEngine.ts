@@ -38,8 +38,27 @@ export class ConstraintEngine {
         const startTime = Date.now();
         const TIMEOUT_MS = 3000;
 
+        // PRE-CALCULATE VALIDITY COUNTS (Critical for Ratio Scoring)
+        // We need to know: How many shifts *could* Aysun possibly take?
+        // This allows us to calculate "Scarcity": (Need 4 / Valid 5) = 0.8 Criticality
+        const validShiftCounts = new Map<string, number>();
+        staff.forEach(p => {
+            let validCount = 0;
+            shiftsToFill.forEach(s => {
+                // Check static rules only (Skill, Weekend, etc. but NOT dynamic ones like Consecutive)
+                // Actually, checking all constraints is safer.
+                // We simulate "Is this person valid for this shift IF it was the only shift?"
+                const res = this.validateAssignment(s, p, [], true); // Relaxed? No?
+                // Let's use strict validation but with empty schedule.
+                // NOTE: Use relaxed=true to skip quota checks (circular dependency), 
+                // but strict for Skills/Availability.
+                if (res.isValid) validCount++;
+            });
+            validShiftCounts.set(p.id, validCount);
+        });
+
         const schedule: IShift[] = [];
-        const result = this.backtrack(shiftsToFill, 0, schedule, staff, relaxConstraints, startTime, TIMEOUT_MS, equalityConfig);
+        const result = this.backtrack(shiftsToFill, 0, schedule, staff, relaxConstraints, startTime, TIMEOUT_MS, equalityConfig, validShiftCounts);
 
         if (!result) {
             throw new Error("Could not generate a valid schedule. Constraints are too strict.");
@@ -56,7 +75,8 @@ export class ConstraintEngine {
         relaxConstraints: boolean,
         startTime: number,
         timeoutMs: number,
-        equalityConfig?: import('./types').IEqualityConfig
+        equalityConfig?: import('./types').IEqualityConfig,
+        validShiftCounts?: Map<string, number>
     ): boolean {
         // Check Timeout
         if (Date.now() - startTime > timeoutMs) {
@@ -74,11 +94,7 @@ export class ConstraintEngine {
             if (s.assignedToId) currentCounts.set(s.assignedToId, (currentCounts.get(s.assignedToId) || 0) + 1);
         });
 
-        // SORTING LOGIC: Advanced Spacing & Fairness Heuristic
-        // 1. Spacing: Prioritize people who haven't worked in a while.
-        // 2. Fairness: Quadratic penalty for high shift counts.
-        // 3. Quota: Dynamic urgency.
-
+        // SORTING LOGIC: Criticality Ratio & Fairness
         const scoredStaff = staff.map(person => {
             let score = 1000; // Base Score
 
@@ -102,22 +118,29 @@ export class ConstraintEngine {
 
             const target = person.exactShifts !== undefined ? person.exactShifts : person.minShifts;
 
-            // 1. QUOTA URGENCY (Absolute Priority)
-            // CRITICAL FIX 2: Use FLAT boost.
-            // Previously `remainingNeeded * 1M` biased towards people with HUGE quotas (Min 10 beats Min 3).
-            // This caused Nurullah (Min 10) to eat all early January shifts, leaving none for Hatice (Min 3) who is only free early Jan.
-            // NOW: Everyone below quota gets the SAME massive boost. Tie-breaker is 'Count' (Fairness).
+            // 1. QUOTA URGENCY (CRITICALITY RATIO)
+            // Replaces "Flat Boost" with "Smart Boost".
             if (target !== undefined) {
                 const remainingNeeded = target - count;
                 if (remainingNeeded > 0) {
-                    // Check if this shift helps (is NOT day)
                     if (shift.type !== 'day') {
-                        // Urgency: Boost MASSIVELY (Flat).
-                        score += 100000000;
-                        // Small bonus for "More Need" just to break ties if counts are equal? 
-                        // No, stick to fairness (low count wins).
+                        // Criticality = Need / Potential
+                        // Potential = Total Valid - Allocated? 
+                        // Approx: Total Valid (static).
+                        const totalValid = validShiftCounts?.get(person.id) || 1;
+                        // Ratio: If Need 4, Potential 5 -> 0.8.
+                        // If Need 5, Potential 20 -> 0.25.
+                        const criticality = remainingNeeded / Math.max(1, totalValid);
+
+                        // Boost Factor: 100 Million * Criticality.
+                        // Aysun (0.8) -> 80M.
+                        // Ferhat (0.25) -> 25M.
+                        score += (criticality * 100000000);
+
+                        // Flat boost ensures they still beat "No Quota" people.
+                        score += 50000000;
                     } else {
-                        // Avoid wasting availability on Mesai
+                        // Mesai Check: Still avoid wasting availability
                         score -= 50000;
                     }
                 }
@@ -125,7 +148,7 @@ export class ConstraintEngine {
 
             // 2. PREFERENCE (Medium Priority)
             if (equalityConfig?.ignoredPersonIds?.includes(person.id)) {
-                score -= 100000; // Do not pick unless absolutely necessary
+                score -= 100000;
             } else if (equalityConfig?.preferredPersonIds?.includes(person.id)) {
                 score += 2000;
             }
@@ -143,7 +166,9 @@ export class ConstraintEngine {
             if (person.maxShifts !== undefined && count >= person.maxShifts - 1) {
                 // They are 1 shift away from Max.
                 // Penalize them heavily so Büşra/Şenol (who have room) get picked instead.
-                score -= 5000;
+                score -= 10000000; // HUGE penalty to force rotation (Unless quota urgency overrides)
+                // But Quota Urgency is +50-100M. So Quota wins.
+                // If Quota met (remaining <= 0), this penalty prevents exceeding Max. perfect.
             }
 
             // 4. SPACING (Gap Bonus)
@@ -159,26 +184,10 @@ export class ConstraintEngine {
             // Boost if they haven't worked recently.
             score += Math.min(shiftsAgo, 20) * 100;
 
-            // 5. AVAILABILITY SCARCITY (New Factor)
-            // If someone has very few available days (like Hatice/Aysun), prioritizing them is CRITICAL.
-            // Estimate constriction: Count permit ranges?
-            // Simple heuristic: If they have ANY permit ranges (dates they can't work), boost them.
-            // Checking actual array length is expensive, but checking existence is cheap.
-            if (person.availability.unavailableDates.length > 5 || (person.permitRanges && person.permitRanges.length > 0)) {
-                // They are restricted. Give them a boost to win ties against unrestricted people (Ferhat).
-                score += 5000;
-            }
-
-            // 6. RANDOM NOISE (Break Determinism)
-            // CRITICAL FIX 3: Reduce noise amplitude.
-            // Penalty for +1 shift is -100 (approx). 
-            // Noise MUST be smaller than 100 to avoid overriding fairness.
-            // Let's set max noise to 50.
-            // AND disable noise entirely if they have a Quota Boost (Urgency > 1M).
+            // 5. NOISE
+            // Keep it small to let Ratio decide.
             if (score < 1000000) {
                 score += Math.floor(Math.random() * 50);
-            } else {
-                // No noise for desperate people. Fairness (Count) must rule strictly.
             }
 
             return { person, score };
@@ -199,7 +208,7 @@ export class ConstraintEngine {
                 currentSchedule.push(shift);
 
                 // Recurse
-                if (this.backtrack(shifts, index + 1, currentSchedule, staff, relaxConstraints, startTime, timeoutMs, equalityConfig)) {
+                if (this.backtrack(shifts, index + 1, currentSchedule, staff, relaxConstraints, startTime, timeoutMs, equalityConfig, validShiftCounts)) {
                     return true;
                 }
 
