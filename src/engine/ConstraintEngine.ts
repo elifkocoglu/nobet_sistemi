@@ -85,13 +85,15 @@ export class ConstraintEngine {
             const count = currentCounts.get(person.id) || 0;
             const target = person.exactShifts !== undefined ? person.exactShifts : person.minShifts;
 
-            // 1. QUOTA URGENCY (Highest Priority)
+            // 1. QUOTA URGENCY (Absolute Priority)
             if (target !== undefined) {
                 const remainingNeeded = target - count;
                 if (remainingNeeded > 0) {
-                    // Urgency: Boost heavily if they need shifts.
-                    score += 50000;
-                    score += remainingNeeded * 5000;
+                    // Urgency: Boost MASSIVELY to ensure they get picked if valid.
+                    // 1,000,000 points per missing shift.
+                    // This overrides preference (2000), fairness (-5000), spacing (2000).
+                    score += 10000000;
+                    score += remainingNeeded * 1000000;
                 }
             }
 
@@ -120,7 +122,10 @@ export class ConstraintEngine {
             score += Math.min(shiftsAgo, 20) * 100;
 
             // 5. RANDOM NOISE (Break Determinism)
-            score += Math.floor(Math.random() * 200);
+            // Only add noise if NOT desperate for shifts. We don't want to gamble with Hatice.
+            if (score < 1000000) {
+                score += Math.floor(Math.random() * 200);
+            }
 
             return { person, score };
         });
