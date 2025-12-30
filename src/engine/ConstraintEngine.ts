@@ -83,41 +83,62 @@ export class ConstraintEngine {
             // If we want 'Preferred People' to get MORE, we should sort them earlier even if they have counts.
             // OR: If equality is disabled, we just sort differently.
 
+            // 1. Preferred People Logic (Balanced)
+            // Previously: Absolute priority.
+            // New: Prioritize Preferred, BUT if they are significantly ahead (e.g. +3 shifts) of a non-preferred person,
+            // let the non-preferred person catch up. Balance is Key.
             const isAPreferred = equalityConfig?.preferredPersonIds?.includes(a.id);
             const isBPreferred = equalityConfig?.preferredPersonIds?.includes(b.id);
             const isAIgnored = equalityConfig?.ignoredPersonIds?.includes(a.id);
             const isBIgnored = equalityConfig?.ignoredPersonIds?.includes(b.id);
 
-            // Prioritize Preferred
-            if (isAPreferred && !isBPreferred) return -1;
-            if (!isAPreferred && isBPreferred) return 1;
+            const countA = currentCounts.get(a.id) || 0;
+            const countB = currentCounts.get(b.id) || 0;
 
-            // Deprioritize Ignored
+            // Deprioritize Ignored (Strong)
             if (isAIgnored && !isBIgnored) return 1;
             if (!isAIgnored && isBIgnored) return -1;
 
+            // Prioritize Preferred (Smart)
+            if (isAPreferred !== isBPreferred) {
+                // If A is preferred and B is not
+                if (isAPreferred) {
+                    // Start giving priority... but check if A is hoarding shifts.
+                    // If A has 3 more shifts than B, stop favoring A regardless of preference.
+                    if (countA > countB + 3) return 1; // Let B catch up
+                    return -1; // Otherwise favor A
+                }
+                // If B is preferred and A is not
+                if (isBPreferred) {
+                    if (countB > countA + 3) return -1; // Let A catch up
+                    return 1; // Otherwise favor B
+                }
+            }
+
             // 2. Target Quota Priority (Min or Exact)
             // If a person is below their TARGET quota (Min or Exact), they should be prioritized.
-            // Exact shifts acted as a cap in validation, now acts as a floor in sorting.
             const aTarget = a.exactShifts !== undefined ? a.exactShifts : a.minShifts;
             const bTarget = b.exactShifts !== undefined ? b.exactShifts : b.minShifts;
 
-            const aBelowTarget = aTarget !== undefined && (currentCounts.get(a.id) || 0) < aTarget;
-            const bBelowTarget = bTarget !== undefined && (currentCounts.get(b.id) || 0) < bTarget;
+            const aBelowTarget = aTarget !== undefined && countA < aTarget;
+            const bBelowTarget = bTarget !== undefined && countB < bTarget;
 
             if (aBelowTarget && !bBelowTarget) return -1;
             if (!aBelowTarget && bBelowTarget) return 1;
 
             // 3. Standard Equality Logic
-            // If Strict Equality is OFF, maybe just randomise? or still try to balance but loosely?
-            // "Sistem diğer kısıtları karşılamak için nöbetleri eşit dağıtmasın" -> Don't sort by count?
+            // If Strict Equality is OFF (Relaxed), use "Noisy Sort" instead of Pure Random.
+            // Pure Random causes chaos (0 vs 10 shifts). Noisy Sort attempts balance but allows occasional sub-optimal choices to break deadlocks.
             if (equalityConfig && !equalityConfig.applyStrictEquality) {
-                return 0.5 - Math.random(); // Pure random if equality is disabled
+                // Add random noise to counts (-1 to 1) effectively blurring the countA/countB comparison?
+                // Or just small probability swap.
+                // Let's compare counts with a threshold.
+                const diff = countA - countB;
+                if (Math.abs(diff) <= 2) return 0.5 - Math.random(); // If close, randomise
+                return diff; // If large independent, sort by count
             }
 
-            // Default: Sort by count (Least shifts first)
-            const countA = currentCounts.get(a.id) || 0;
-            const countB = currentCounts.get(b.id) || 0;
+            // Default: Strict Sort by count (Least shifts first)
             if (countA === countB) return 0.5 - Math.random();
             return countA - countB;
         });
