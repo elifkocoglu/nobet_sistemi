@@ -12,7 +12,13 @@ export class GroupQuotaRule implements IRule {
     }
 
     validate(_shift: IShift, person: IPerson, assignedShifts: IShift[], isRelaxed?: boolean): IRuleResult {
-        if (isRelaxed) return { isValid: true };
+        // Group Quota should act as a hard limit unless specifically designed otherwise.
+        // Relaxing it completely (return true) causes massive overflows (21 vs 12).
+        // If we want to relax, we could allow +1 or +2, but for now let's enforce it strictly
+        // or effectively disable relaxation for this rule.
+
+        // Remove: if (isRelaxed) return { isValid: true };
+
 
         // Find which group(s) this person belongs to
         const personsGroups = this.groups.filter(g => g.personIds.includes(person.id));

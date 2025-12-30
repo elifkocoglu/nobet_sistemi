@@ -83,17 +83,28 @@ export class ConstraintEngine {
             // If we want 'Preferred People' to get MORE, we should sort them earlier even if they have counts.
             // OR: If equality is disabled, we just sort differently.
 
-            // 1. Preferred People Logic (Balanced)
-            // Previously: Absolute priority.
-            // New: Prioritize Preferred, BUT if they are significantly ahead (e.g. +3 shifts) of a non-preferred person,
-            // let the non-preferred person catch up. Balance is Key.
+            // 1. Target Quota Priority (Min or Exact) - HIGHEST PRIORITY
+            // If a person is below their TARGET quota (Min or Exact), they MUST be prioritized to ensure feasibility.
+            // This prevents "Preferred" staff from starving those who have strict requirements.
+            const aTarget = a.exactShifts !== undefined ? a.exactShifts : a.minShifts;
+            const bTarget = b.exactShifts !== undefined ? b.exactShifts : b.minShifts;
+
+            const countA = currentCounts.get(a.id) || 0;
+            const countB = currentCounts.get(b.id) || 0;
+
+            const aBelowTarget = aTarget !== undefined && countA < aTarget;
+            const bBelowTarget = bTarget !== undefined && countB < bTarget;
+
+            if (aBelowTarget && !bBelowTarget) return -1;
+            if (!aBelowTarget && bBelowTarget) return 1;
+
+            // 2. Preferred People Logic (Balanced)
+            // Prioritize Preferred, BUT if they are significantly ahead (e.g. +3 shifts) of a non-preferred person,
+            // let the non-preferred person catch up.
             const isAPreferred = equalityConfig?.preferredPersonIds?.includes(a.id);
             const isBPreferred = equalityConfig?.preferredPersonIds?.includes(b.id);
             const isAIgnored = equalityConfig?.ignoredPersonIds?.includes(a.id);
             const isBIgnored = equalityConfig?.ignoredPersonIds?.includes(b.id);
-
-            const countA = currentCounts.get(a.id) || 0;
-            const countB = currentCounts.get(b.id) || 0;
 
             // Deprioritize Ignored (Strong)
             if (isAIgnored && !isBIgnored) return 1;
@@ -103,8 +114,6 @@ export class ConstraintEngine {
             if (isAPreferred !== isBPreferred) {
                 // If A is preferred and B is not
                 if (isAPreferred) {
-                    // Start giving priority... but check if A is hoarding shifts.
-                    // If A has 3 more shifts than B, stop favoring A regardless of preference.
                     if (countA > countB + 3) return 1; // Let B catch up
                     return -1; // Otherwise favor A
                 }
@@ -114,17 +123,6 @@ export class ConstraintEngine {
                     return 1; // Otherwise favor B
                 }
             }
-
-            // 2. Target Quota Priority (Min or Exact)
-            // If a person is below their TARGET quota (Min or Exact), they should be prioritized.
-            const aTarget = a.exactShifts !== undefined ? a.exactShifts : a.minShifts;
-            const bTarget = b.exactShifts !== undefined ? b.exactShifts : b.minShifts;
-
-            const aBelowTarget = aTarget !== undefined && countA < aTarget;
-            const bBelowTarget = bTarget !== undefined && countB < bTarget;
-
-            if (aBelowTarget && !bBelowTarget) return -1;
-            if (!aBelowTarget && bBelowTarget) return 1;
 
             // 3. Standard Equality Logic
             // If Strict Equality is OFF (Relaxed), use "Noisy Sort" instead of Pure Random.
