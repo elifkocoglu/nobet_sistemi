@@ -103,14 +103,22 @@ export class ConstraintEngine {
             const target = person.exactShifts !== undefined ? person.exactShifts : person.minShifts;
 
             // 1. QUOTA URGENCY (Absolute Priority)
+            // CRITICAL FIX: Only boost if this specific shift helps them meet the quota!
+            // If they need "Nöbet" (Non-Day), don't boost them for "Mesai" (Day).
+            // Assigning a Mesai shift would actually HURT them by consuming a valid day.
             if (target !== undefined) {
                 const remainingNeeded = target - count;
                 if (remainingNeeded > 0) {
-                    // Urgency: Boost MASSIVELY to ensure they get picked if valid.
-                    // 1,000,000 points per missing shift.
-                    // This overrides preference (2000), fairness (-5000), spacing (2000).
-                    score += 10000000;
-                    score += remainingNeeded * 1000000;
+                    // Check if this shift helps (is NOT day)
+                    if (shift.type !== 'day') {
+                        // Urgency: Boost MASSIVELY to ensure they get picked if valid.
+                        score += 10000000;
+                        score += remainingNeeded * 1000000;
+                    } else {
+                        // If this is a DAY shift, and they are desperate for Nöbet...
+                        // We should actively AVOID giving them this day shift, so they stay free for Nöbet.
+                        score -= 50000;
+                    }
                 }
             }
 
