@@ -11,7 +11,7 @@ export class GroupQuotaRule implements IRule {
         this.groups = groups;
     }
 
-    validate(_shift: IShift, person: IPerson, assignedShifts: IShift[], isRelaxed?: boolean): IRuleResult {
+    validate(_shift: IShift, person: IPerson, assignedShifts: IShift[], _isRelaxed?: boolean): IRuleResult {
         // Group Quota should act as a hard limit unless specifically designed otherwise.
         // Relaxing it completely (return true) causes massive overflows (21 vs 12).
         // If we want to relax, we could allow +1 or +2, but for now let's enforce it strictly
