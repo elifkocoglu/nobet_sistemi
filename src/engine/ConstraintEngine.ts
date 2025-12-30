@@ -116,107 +116,84 @@ export class ConstraintEngine {
             let score = 1000; // Base Score
 
             // Count only NON-DAY shifts for Quota Purposes
-            // (Assumes `currentCounts` is total, we need specific counts)
-            // Re-calculating counts inside loop is expensive (O(N*M)).
-            // Better to pre-calculate map of { id: { total: x, nobet: y } }.
 
-            // Optimization: Since we already computed `currentCounts` (Total), we can't trust it for Quota.
-            // Let's just do a quick filter here for the person.
-            // Actually, let's optimize the pre-calculation outside.
-            // But for now, let's rely on `currentCounts` being inaccurate and fix it?
-            // No, easier to just check currentSchedule for this person.
+            // Calculate Nöbet Count
             let nobetCount = 0;
             currentSchedule.forEach(s => {
                 if (s.assignedToId === person.id && s.type !== 'day') nobetCount++;
             });
 
-            const count = nobetCount; // Use Nöbet count for Quota logic
-            // const totalCount = currentCounts.get(person.id) || 0; // Unused for now
-
+            const count = nobetCount;
             const target = person.exactShifts !== undefined ? person.exactShifts : person.minShifts;
+            const max = person.maxShifts;
 
-            // 1. QUOTA URGENCY (CRITICALITY RATIO + FILL RATE)
-            if (target !== undefined && target > 0) { // Ensure target > 0 to avoid div by zero
-                const remainingNeeded = target - count;
+            // 1. COMPLETION RATIO (The most important factor for Balance)
+            // Goal: Prioritize those who are furthest from their target (percentage-wise).
+            // Aysun (Target 4, Has 0) -> 0% -> Priority HIGH
+            // Fatih (Target 10, Has 2) -> 20% -> Priority MEDIUM
+            // Büşra (Target 10, Has 9) -> 90% -> Priority LOW
+
+            let completionRatio = 0;
+            if (target && target > 0) {
+                completionRatio = count / target;
+            } else if (max && max > 0) {
+                // If no min/exact, use max as a soft target reference
+                completionRatio = count / max;
+            } else {
+                // No limits? Assume target is average (~7)
+                completionRatio = count / 7;
+            }
+
+            // Score Formula: (1 - Ratio) * 1,000,000
+            // 0% -> 1,000,000
+            // 50% -> 500,000
+            // 100% -> 0
+            if (completionRatio < 1) {
+                score += (1 - completionRatio) * 1000000;
+            } else {
+                // Already met target. Drop priority significantly.
+                score -= completionRatio * 100000;
+            }
+
+            // 2. SCARCITY BOOST (Criticality)
+            // If this shift is one of the FEW valid ones for this person, boost them.
+            if (shift.type !== 'day') {
+                const totalValid = validShiftCounts?.get(person.id) || 1;
+                const remainingNeeded = (target || 0) - count;
+
                 if (remainingNeeded > 0) {
-                    if (shift.type !== 'day') {
-                        // A. Criticality = Need / Potential
-                        const totalValid = validShiftCounts?.get(person.id) || 1;
-                        const criticality = remainingNeeded / Math.max(1, totalValid);
-
-                        // B. Fill Rate Inversion = (1 - (Current / Target))
-                        // 0/4 = 1.0 (Highest Priority)
-                        // 3/4 = 0.25 (Lower Priority)
-                        const emptiness = 1 - (count / target);
-
-                        // Combined Boost
-                        // Criticality is dominant (Availability constraints).
-                        // Emptiness helps smooth the path (Nobody stays at 0).
-
-                        score += (criticality * 100000000);
-                        score += (emptiness * 50000000);
-
-                        // Flat boost ensures they still beat "No Quota/Met Quota" people.
-                        score += 50000000;
-                    } else {
-                        score -= 50000;
-                    }
+                    // Criticality = Need / Potential
+                    // If Need 4, Potential 4 -> 1.0 (Critical!) -> Boost +500,000
+                    const criticality = remainingNeeded / Math.max(1, totalValid);
+                    score += criticality * 500000;
                 }
-            }
-
-            // 2. GLOBAL BALANCE (Leftover Handling)
-            // If Quotas are met (or undefined), we want to pull low-count people up.
-            // Büşra (10) vs Fatih (3).
-            // This only effectively applies if they are not in the "Quota Urgency" bracket above.
-            // (Or if Fairness Penalty isn't enough).
-            // Score += (TargetAverage - Count) * 2000
-            // but we don't know average easily.
-            // Just use inverse count.
-            score -= (count * 2000); // Linear penalty on top of quadratic, discourages leading the pack.
-
-            // 3. PREFERENCE (Medium Priority)
-            if (equalityConfig?.ignoredPersonIds?.includes(person.id)) {
-                score -= 100000;
-            } else if (equalityConfig?.preferredPersonIds?.includes(person.id)) {
-                score += 2000;
-            }
-
-            // 4. DISTRIBUTION (Quadratic Fair Penalty)
-            // Punish high counts severely to force equality.
-            // Increased to 500 to stop hoarding (e.g. Büşra 11 shifts).
-            // 11^2 * 500 = 60,500 penalty. (Score base 1000). Highly impactful.
-            score -= (count * count * 1000);
-
-            // 4.5 MAX LIMIT AVERSION (Soft Cap)
-            if (person.maxShifts !== undefined && count >= person.maxShifts) {
-                // Already AT Max (or above).
-                // Penalize EXTREMELY (-100M) to avoid exceeding unless desperate.
-                // This acts as a "Hard Constraint" that can be broken if no other option exists.
-                score -= 100000000;
-            } else if (person.maxShifts !== undefined && count >= person.maxShifts - 1) {
-                // They are 1 shift away from Max.
-                // Penalize heavily (-10k) so others get picked first.
+            } else {
+                // Mesai penalty
                 score -= 10000;
             }
 
-            // 4. SPACING (Gap Bonus)
-            // Ideally we want to pick people who haven't worked in x days.
-            // Since we generate sequentially, we can look backwards in the schedule.
-            let shiftsAgo = 20; // Default buffer
+            // 3. PREFERENCE
+            if (equalityConfig?.ignoredPersonIds?.includes(person.id)) score -= 200000;
+            if (equalityConfig?.preferredPersonIds?.includes(person.id)) score += 5000;
+
+            // 4. MAX LIMIT HARD CAP AVOIDANCE
+            if (max !== undefined) {
+                if (count >= max) score -= 100000000; // Hard Stop (-100M)
+                else if (count >= max - 1) score -= 50000; // Warning
+            }
+
+            // 5. SPACING (Gap Bonus)
+            let shiftsAgo = 30;
             for (let i = currentSchedule.length - 1; i >= 0; i--) {
                 if (currentSchedule[i].assignedToId === person.id) {
                     shiftsAgo = currentSchedule.length - i;
                     break;
                 }
             }
-            // Boost if they haven't worked recently.
-            score += Math.min(shiftsAgo, 20) * 100;
+            score += Math.min(shiftsAgo, 30) * 1000; // Max +30,000
 
-            // 5. NOISE
-            // Keep it small to let Ratio decide.
-            if (score < 1000000) {
-                score += Math.floor(Math.random() * 50);
-            }
+            // 6. NOISE (Randomness for equal scores)
+            score += Math.floor(Math.random() * 500);
 
             return { person, score };
         });
