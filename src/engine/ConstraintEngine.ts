@@ -36,7 +36,7 @@ export class ConstraintEngine {
     ): IShift[] {
         // Simple Backtracking Algorithm
         const startTime = Date.now();
-        const TIMEOUT_MS = 3000;
+        const TIMEOUT_MS = 12000;
 
         const schedule: IShift[] = [];
         const result = this.backtrack(shiftsToFill, 0, schedule, staff, relaxConstraints, startTime, TIMEOUT_MS, equalityConfig);
