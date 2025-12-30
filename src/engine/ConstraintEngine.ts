@@ -96,13 +96,17 @@ export class ConstraintEngine {
             if (isAIgnored && !isBIgnored) return 1;
             if (!isAIgnored && isBIgnored) return -1;
 
-            // 2. Min Quota Priority (New)
-            // If a person is below their MIN quota, they should be prioritized over those who met it (or have no quota).
-            const aBelowMin = a.minShifts !== undefined && (currentCounts.get(a.id) || 0) < a.minShifts;
-            const bBelowMin = b.minShifts !== undefined && (currentCounts.get(b.id) || 0) < b.minShifts;
+            // 2. Target Quota Priority (Min or Exact)
+            // If a person is below their TARGET quota (Min or Exact), they should be prioritized.
+            // Exact shifts acted as a cap in validation, now acts as a floor in sorting.
+            const aTarget = a.exactShifts !== undefined ? a.exactShifts : a.minShifts;
+            const bTarget = b.exactShifts !== undefined ? b.exactShifts : b.minShifts;
 
-            if (aBelowMin && !bBelowMin) return -1;
-            if (!aBelowMin && bBelowMin) return 1;
+            const aBelowTarget = aTarget !== undefined && (currentCounts.get(a.id) || 0) < aTarget;
+            const bBelowTarget = bTarget !== undefined && (currentCounts.get(b.id) || 0) < bTarget;
+
+            if (aBelowTarget && !bBelowTarget) return -1;
+            if (!aBelowTarget && bBelowTarget) return 1;
 
             // 3. Standard Equality Logic
             // If Strict Equality is OFF, maybe just randomise? or still try to balance but loosely?
