@@ -36,20 +36,26 @@ export class ConstraintEngine {
     ): IShift[] {
         // Simple Backtracking Algorithm
         const startTime = Date.now();
-        const TIMEOUT_MS = 5000;
+        const TIMEOUT_MS = 15000; // Increased to 15s for complex constraints
 
-        // SORT SHIFTS: Critical First
-        // Process Nöbet (24h/Night) shifts BEFORE Mesai (Day) shifts.
-        // This prevents "Junk" shifts (Mesai) from blocking critical Quota shifts (Nöbet) for people with limited availability (Aysun).
+        // SORT SHIFTS: Date First, then Priority (Nöbet > Mesai)
+        // CRITICAL FIX: We generally want Nöbet filled first, BUT strict separation (All Nöbet then All Mesai)
+        // causes "Backtracking Hell" (~10^50 steps) if a late Mesai conflicts with an early Nöbet via Transition Rule.
+        // We MUST sort primarily by DATE to keep dependency distance short.
         shiftsToFill.sort((a, b) => {
+            // 1. Date Ascending
+            const dateA = new Date(a.date).getTime();
+            const dateB = new Date(b.date).getTime();
+            if (dateA !== dateB) return dateA - dateB;
+
+            // 2. Priority: Nöbet (24h) First within the same day
+            // logic: fill the hard jar (24h) first, then pour sand (mesai) around it.
             const aIsNobet = a.type !== 'day';
             const bIsNobet = b.type !== 'day';
             if (aIsNobet && !bIsNobet) return -1;
             if (!aIsNobet && bIsNobet) return 1;
-            // Secondary Sort: Date ascending (Standard)
-            const dateA = new Date(a.date).getTime();
-            const dateB = new Date(b.date).getTime();
-            return dateA - dateB;
+
+            return 0;
         });
 
         // PRE-CALCULATE VALIDITY COUNTS
