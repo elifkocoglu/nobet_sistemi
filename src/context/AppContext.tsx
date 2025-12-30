@@ -2,7 +2,6 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import type { IPerson, IRule, IStaffProfile } from '../engine/types';
 import { WeekendExclusionRule } from '../engine/rules/WeekendExclusionRule';
-import { AvailabilityRule } from '../engine/rules/AvailabilityRule';
 import { NoConsecutiveShiftRule } from '../engine/rules/NoConsecutiveRule';
 import { SkillMatchRule } from '../engine/rules/SkillMatchRule';
 import { SpecificDatePermitRule } from '../engine/rules/SpecificDatePermitRule';
@@ -312,39 +311,50 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const getActiveRules = (): IRule[] => {
         const activeRules: IRule[] = [];
-        if (rulesConfig['availability']?.isActive) activeRules.push(new AvailabilityRule());
+
+        // 1. No Consecutive Shifts (Highest Priority - Fail Fast)
         if (rulesConfig['no-consecutive']?.isActive) activeRules.push(new NoConsecutiveShiftRule());
+
+        // 2. Skill Match (Fundamental Feasibility)
         if (rulesConfig['skill-match']?.isActive) activeRules.push(new SkillMatchRule());
+
+        // 3. Special Date Permits / Exclusions (Özel İzinler)
+        if (rulesConfig['specific-date-permit']?.isActive) {
+            activeRules.push(new SpecificDatePermitRule());
+        }
         if (rulesConfig['weekend-exclusion']?.isActive) {
             const excludedIds = rulesConfig['weekend-exclusion'].excludedPersonIds || [];
             activeRules.push(new WeekendExclusionRule(excludedIds));
         }
-        if (rulesConfig['specific-date-permit']?.isActive) {
-            activeRules.push(new SpecificDatePermitRule());
-        }
-        if (rulesConfig['shift-type']?.isActive) {
-            const mesaiIds = rulesConfig['shift-type'].mesaiPersonIds || [];
-            activeRules.push(new ShiftTypeRule(mesaiIds));
-        }
-        if (rulesConfig['every-other-day-limit']?.isActive) {
-            const limit = rulesConfig['every-other-day-limit'].everyOtherDayLimit || 5;
-            activeRules.push(new EveryOtherDayLimitRule(limit));
-        }
+
+        // 4. Min/Max Quotas (Personal)
+        // Note: Sort priority for this is also handled in ConstraintEngine
+        activeRules.push(new MinMaxQuotaRule());
+
+        // 5. Group Quota
         if (rulesConfig['group-quota']?.isActive) {
             const quotas = rulesConfig['group-quota'].groupQuotas || [];
             activeRules.push(new GroupQuotaRule(quotas));
         }
-        // Always active rules
-        activeRules.push(new OneShiftPerDayRule());
-        activeRules.push(new MinMaxQuotaRule());
 
-        // New Transition Rule (Always active or configurable? Making it always active as it's a safety rule requested as "Important")
-        // Alternatively, add to config if user wants to disable.
-        // For now, let's treat it as a fundamental safety rule similar to OneShiftPerDay, 
-        // OR we can make it part of 'shift-type' logic. 
-        // Given the prompt "mesaiye giden biri ertesi gün nöbete gidebilir ama nöbete giden biri ertesi gün mesaiye gidemez", 
-        // this sounds like a hard constraint for this workplace.
+        // 6. Every Other Day Limit
+        if (rulesConfig['every-other-day-limit']?.isActive) {
+            const limit = rulesConfig['every-other-day-limit'].everyOtherDayLimit || 5;
+            activeRules.push(new EveryOtherDayLimitRule(limit));
+        }
+
+        // Other Rules (Base constraints)
+        activeRules.push(new OneShiftPerDayRule());
+
+        // Shift Type Rules
+        if (rulesConfig['shift-type']?.isActive) {
+            const mesaiIds = rulesConfig['shift-type'].mesaiPersonIds || [];
+            activeRules.push(new ShiftTypeRule(mesaiIds));
+        }
         activeRules.push(new ShiftTransitionRule());
+
+        // REMOVED: AvailabilityRule (as requested, no endpoint)
+        // if (rulesConfig['availability']?.isActive) activeRules.push(new AvailabilityRule());
 
         return activeRules;
     };
