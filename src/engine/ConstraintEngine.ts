@@ -150,10 +150,26 @@ export class ConstraintEngine {
             // Boost if they haven't worked recently.
             score += Math.min(shiftsAgo, 20) * 100;
 
-            // 5. RANDOM NOISE (Break Determinism)
-            // Only add noise if NOT desperate for shifts. We don't want to gamble with Hatice.
+            // 5. AVAILABILITY SCARCITY (New Factor)
+            // If someone has very few available days (like Hatice/Aysun), prioritizing them is CRITICAL.
+            // Estimate constriction: Count permit ranges?
+            // Simple heuristic: If they have ANY permit ranges (dates they can't work), boost them.
+            // Checking actual array length is expensive, but checking existence is cheap.
+            if (person.availability.unavailableDates.length > 5 || (person.permitRanges && person.permitRanges.length > 0)) {
+                // They are restricted. Give them a boost to win ties against unrestricted people (Ferhat).
+                score += 5000;
+            }
+
+            // 6. RANDOM NOISE (Break Determinism)
+            // CRITICAL FIX 3: Reduce noise amplitude.
+            // Penalty for +1 shift is -100 (approx). 
+            // Noise MUST be smaller than 100 to avoid overriding fairness.
+            // Let's set max noise to 50.
+            // AND disable noise entirely if they have a Quota Boost (Urgency > 1M).
             if (score < 1000000) {
-                score += Math.floor(Math.random() * 200);
+                score += Math.floor(Math.random() * 50);
+            } else {
+                // No noise for desperate people. Fairness (Count) must rule strictly.
             }
 
             return { person, score };
