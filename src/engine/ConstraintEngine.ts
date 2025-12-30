@@ -36,7 +36,7 @@ export class ConstraintEngine {
     ): IShift[] {
         // Simple Backtracking Algorithm
         const startTime = Date.now();
-        const TIMEOUT_MS = 12000;
+        const TIMEOUT_MS = 3000;
 
         const schedule: IShift[] = [];
         const result = this.backtrack(shiftsToFill, 0, schedule, staff, relaxConstraints, startTime, TIMEOUT_MS, equalityConfig);
@@ -74,73 +74,59 @@ export class ConstraintEngine {
             if (s.assignedToId) currentCounts.set(s.assignedToId, (currentCounts.get(s.assignedToId) || 0) + 1);
         });
 
-        // SORTING LOGIC START
-        const shuffledStaff = [...staff].sort((a, b) => {
-            // 1. Preferred People (Give them MORE shifts -> put them FIRST in the list if they have FEWER shifts so far? 
-            // Actually, to give them MORE shifts, we want them to be picked even if they have EQUAL OR MORE shifts than others (up to a point).
-            // But the basic backtracking greedily picks the first valid person.
-            // If we sort by 'Least Shifts First' (Standard), we equalise.
-            // If we want 'Preferred People' to get MORE, we should sort them earlier even if they have counts.
-            // OR: If equality is disabled, we just sort differently.
+        // SORTING LOGIC: Score-Based Heuristic
+        // Instead of rigid nested checks, we assign a "Fitness Score" to each person.
+        // Higher score = Assigned first.
+        // Random noise is added to prevent deterministic loops.
 
-            // 1. Target Quota Priority (Min or Exact) - HIGHEST PRIORITY
-            // If a person is below their TARGET quota (Min or Exact), they MUST be prioritized to ensure feasibility.
-            // This prevents "Preferred" staff from starving those who have strict requirements.
-            const aTarget = a.exactShifts !== undefined ? a.exactShifts : a.minShifts;
-            const bTarget = b.exactShifts !== undefined ? b.exactShifts : b.minShifts;
+        const scoredStaff = staff.map(person => {
+            let score = 1000; // Base Score
 
-            const countA = currentCounts.get(a.id) || 0;
-            const countB = currentCounts.get(b.id) || 0;
+            const count = currentCounts.get(person.id) || 0;
+            const target = person.exactShifts !== undefined ? person.exactShifts : person.minShifts;
 
-            const aBelowTarget = aTarget !== undefined && countA < aTarget;
-            const bBelowTarget = bTarget !== undefined && countB < bTarget;
+            // 1. Critical Priority: Below Target Quota
+            if (target !== undefined && count < target) {
+                score += 5000;
+                // Add extra weight for "Urgency" (distance to target)
+                score += (target - count) * 100;
+            }
 
-            if (aBelowTarget && !bBelowTarget) return -1;
-            if (!aBelowTarget && bBelowTarget) return 1;
-
-            // 2. Preferred People Logic (Balanced)
-            // Prioritize Preferred, BUT if they are significantly ahead (e.g. +3 shifts) of a non-preferred person,
-            // let the non-preferred person catch up.
-            const isAPreferred = equalityConfig?.preferredPersonIds?.includes(a.id);
-            const isBPreferred = equalityConfig?.preferredPersonIds?.includes(b.id);
-            const isAIgnored = equalityConfig?.ignoredPersonIds?.includes(a.id);
-            const isBIgnored = equalityConfig?.ignoredPersonIds?.includes(b.id);
-
-            // Deprioritize Ignored (Strong)
-            if (isAIgnored && !isBIgnored) return 1;
-            if (!isAIgnored && isBIgnored) return -1;
-
-            // Prioritize Preferred (Smart)
-            if (isAPreferred !== isBPreferred) {
-                // If A is preferred and B is not
-                if (isAPreferred) {
-                    if (countA > countB + 3) return 1; // Let B catch up
-                    return -1; // Otherwise favor A
-                }
-                // If B is preferred and A is not
-                if (isBPreferred) {
-                    if (countB > countA + 3) return -1; // Let A catch up
-                    return 1; // Otherwise favor B
+            // 2. Preference (Soft Priority)
+            // Only boost if not ignored
+            const isIgnored = equalityConfig?.ignoredPersonIds?.includes(person.id);
+            if (isIgnored) {
+                score -= 2000; // Heavy penalty
+            } else {
+                const isPreferred = equalityConfig?.preferredPersonIds?.includes(person.id);
+                if (isPreferred) {
+                    // Capped Preference Logic:
+                    // If they are WAY ahead of others (e.g. +3 shifts), stop boosting.
+                    // This is handled partly by the 'Count Penalty' below, but let's be explicit.
+                    // Actually, let's just add a flat boost and let the Count Penalty balance it naturally?
+                    // "Preferred" means "I want them to work more".
+                    score += 500;
                 }
             }
 
-            // 3. Standard Equality Logic
-            // If Strict Equality is OFF (Relaxed), use "Noisy Sort" instead of Pure Random.
-            // Pure Random causes chaos (0 vs 10 shifts). Noisy Sort attempts balance but allows occasional sub-optimal choices to break deadlocks.
-            if (equalityConfig && !equalityConfig.applyStrictEquality) {
-                // Add random noise to counts (-1 to 1) effectively blurring the countA/countB comparison?
-                // Or just small probability swap.
-                // Let's compare counts with a threshold.
-                const diff = countA - countB;
-                if (Math.abs(diff) <= 2) return 0.5 - Math.random(); // If close, randomise
-                return diff; // If large independent, sort by count
-            }
+            // 3. Equality / Distribution (Negative Feedback)
+            // The more you have, the lower your score.
+            // Penalty factor: 50 points per shift.
+            score -= (count * 50);
 
-            // Default: Strict Sort by count (Least shifts first)
-            if (countA === countB) return 0.5 - Math.random();
-            return countA - countB;
+            // 4. Random Noise (Breaking Deadlocks)
+            // Add slight randomness (+/- 25) so two people with identical stats swap places occasionally.
+            // This is CRITICAL for backtracking to find different paths on retries.
+            score += Math.floor(Math.random() * 50);
+
+            return { person, score };
         });
-        // SORTING LOGIC END
+
+        // Sort by Score Descending
+        scoredStaff.sort((a, b) => b.score - a.score);
+
+        const shuffledStaff = scoredStaff.map(s => s.person);
+
 
         for (const person of shuffledStaff) {
             // Validate
