@@ -36,9 +36,25 @@ export class ConstraintEngine {
     ): IShift[] {
         // Simple Backtracking Algorithm
         const startTime = Date.now();
-        const TIMEOUT_MS = 5000; // Increased to 5s for robust pre-calc
+        const TIMEOUT_MS = 5000;
 
-        // PRE-CALCULATE VALIDITY COUNTS (Critical for Ratio Scoring)
+        // SORT SHIFTS: Critical First
+        // Process Nöbet (24h/Night) shifts BEFORE Mesai (Day) shifts.
+        // This prevents "Junk" shifts (Mesai) from blocking critical Quota shifts (Nöbet) for people with limited availability (Aysun).
+        shiftsToFill.sort((a, b) => {
+            const aIsNobet = a.type !== 'day';
+            const bIsNobet = b.type !== 'day';
+            if (aIsNobet && !bIsNobet) return -1;
+            if (!aIsNobet && bIsNobet) return 1;
+            // Secondary Sort: Date ascending (Standard)
+            const dateA = new Date(a.date).getTime();
+            const dateB = new Date(b.date).getTime();
+            return dateA - dateB;
+        });
+
+        // PRE-CALCULATE VALIDITY COUNTS
+        // ... (Existing Logic) ...
+
         // We need to know: How many shifts *could* Aysun possibly take?
         // This allows us to calculate "Scarcity": (Need 4 / Valid 5) = 0.8 Criticality
         const validShiftCounts = new Map<string, number>();
@@ -155,10 +171,9 @@ export class ConstraintEngine {
 
             // 3. DISTRIBUTION (Quadratic Fair Penalty)
             // Punish high counts severely to force equality.
-            // Use TOTAL count here (including Mesai) for overall workload fairness?
-            // Or just Nöbet fairness? Usually Nöbet fairness is what matters.
-            // Let's use Nöbet Count for fairness to ensure Nöbet equality.
-            score -= (count * count * 100);
+            // Increased to 500 to stop hoarding (e.g. Büşra 11 shifts).
+            // 11^2 * 500 = 60,500 penalty. (Score base 1000). Highly impactful.
+            score -= (count * count * 1000);
 
             // 3.5 MAX LIMIT AVERSION (Soft Cap)
             if (person.maxShifts !== undefined && count >= person.maxShifts) {
