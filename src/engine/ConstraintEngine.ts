@@ -74,50 +74,53 @@ export class ConstraintEngine {
             if (s.assignedToId) currentCounts.set(s.assignedToId, (currentCounts.get(s.assignedToId) || 0) + 1);
         });
 
-        // SORTING LOGIC: Score-Based Heuristic
-        // Instead of rigid nested checks, we assign a "Fitness Score" to each person.
-        // Higher score = Assigned first.
-        // Random noise is added to prevent deterministic loops.
+        // SORTING LOGIC: Advanced Spacing & Fairness Heuristic
+        // 1. Spacing: Prioritize people who haven't worked in a while.
+        // 2. Fairness: Quadratic penalty for high shift counts.
+        // 3. Quota: Dynamic urgency.
 
         const scoredStaff = staff.map(person => {
-            let score = 1000; // Base Score
+            let score = 10000; // High Base Score
 
             const count = currentCounts.get(person.id) || 0;
             const target = person.exactShifts !== undefined ? person.exactShifts : person.minShifts;
 
-            // 1. Critical Priority: Below Target Quota
-            if (target !== undefined && count < target) {
-                score += 5000;
-                // Add extra weight for "Urgency" (distance to target)
-                score += (target - count) * 100;
-            }
-
-            // 2. Preference (Soft Priority)
-            // Only boost if not ignored
-            const isIgnored = equalityConfig?.ignoredPersonIds?.includes(person.id);
-            if (isIgnored) {
-                score -= 2000; // Heavy penalty
-            } else {
-                const isPreferred = equalityConfig?.preferredPersonIds?.includes(person.id);
-                if (isPreferred) {
-                    // Capped Preference Logic:
-                    // If they are WAY ahead of others (e.g. +3 shifts), stop boosting.
-                    // This is handled partly by the 'Count Penalty' below, but let's be explicit.
-                    // Actually, let's just add a flat boost and let the Count Penalty balance it naturally?
-                    // "Preferred" means "I want them to work more".
-                    score += 500;
+            // 1. QUOTA URGENCY (Highest Priority)
+            if (target !== undefined) {
+                const remainingNeeded = target - count;
+                if (remainingNeeded > 0) {
+                    // Urgency: Boost heavily if they need shifts.
+                    score += 50000;
+                    score += remainingNeeded * 5000;
                 }
             }
 
-            // 3. Equality / Distribution (Negative Feedback)
-            // The more you have, the lower your score.
-            // Penalty factor: 50 points per shift.
-            score -= (count * 50);
+            // 2. PREFERENCE (Medium Priority)
+            if (equalityConfig?.ignoredPersonIds?.includes(person.id)) {
+                score -= 100000; // Do not pick unless absolutely necessary
+            } else if (equalityConfig?.preferredPersonIds?.includes(person.id)) {
+                score += 2000;
+            }
 
-            // 4. Random Noise (Breaking Deadlocks)
-            // Add slight randomness (+/- 25) so two people with identical stats swap places occasionally.
-            // This is CRITICAL for backtracking to find different paths on retries.
-            score += Math.floor(Math.random() * 50);
+            // 3. DISTRIBUTION (Quadratic Fair Penalty)
+            // Punish high counts severely to force equality.
+            score -= (count * count * 100);
+
+            // 4. SPACING (Gap Bonus)
+            // Ideally we want to pick people who haven't worked in x days.
+            // Since we generate sequentially, we can look backwards in the schedule.
+            let shiftsAgo = 20; // Default buffer
+            for (let i = currentSchedule.length - 1; i >= 0; i--) {
+                if (currentSchedule[i].assignedToId === person.id) {
+                    shiftsAgo = currentSchedule.length - i;
+                    break;
+                }
+            }
+            // Boost if they haven't worked recently.
+            score += Math.min(shiftsAgo, 20) * 100;
+
+            // 5. RANDOM NOISE (Break Determinism)
+            score += Math.floor(Math.random() * 200);
 
             return { person, score };
         });
