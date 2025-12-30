@@ -243,6 +243,7 @@ export const resources = {
                     strict: 'Diğer kısıtları sağlamak için eşitliği boz',
                     preferred: 'Daha fazla nöbet tutacaklar',
                     ignored: 'Daha az nöbet tutacaklar',
+                    holidayInfo: 'Resmi tatillerde (Bayramlar dahil) gündüz (Mesai) nöbeti yazılmaz, sadece 24 saat nöbet yazılır.',
                 }
             },
             savedSchedules: {

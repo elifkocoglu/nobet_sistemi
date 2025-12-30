@@ -8,7 +8,8 @@ import dayjs from 'dayjs';
 import ScheduleResults from './ScheduleResults';
 import ScheduleTable from './ScheduleTable';
 import { v4 as uuidv4 } from 'uuid';
-import { SaveOutlined, UnorderedListOutlined, DeleteOutlined, EyeOutlined } from '@ant-design/icons';
+import { SaveOutlined, UnorderedListOutlined, DeleteOutlined, EyeOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import * as holidays from '../utils/holidays';
 
 const { RangePicker } = DatePicker;
 const { Title, Paragraph, Text } = Typography;
@@ -118,7 +119,16 @@ const Scheduler: React.FC = () => {
                             if (dept.shifts && dept.shifts.length > 0) {
                                 dept.shifts.forEach(req => {
                                     const isWeekend = curr.day() === 0 || curr.day() === 6;
+                                    const holidayCheck = holidays.isTurkishPublicHoliday(curr);
+                                    const isHoliday = holidayCheck.isHoliday;
+
+                                    // Filter Logic:
+                                    // 1. Weekend Check for Day Shifts (Existing)
                                     if (dept.disableDayShiftsOnWeekends && isWeekend && req.type === 'day') return;
+
+                                    // 2. Holiday Check for Day Shifts (New)
+                                    // "Resmi tatillerde mesai yok"
+                                    if (isHoliday && req.type === 'day') return;
 
                                     for (let i = 0; i < req.count; i++) {
                                         shiftsToFill.push({
@@ -128,7 +138,8 @@ const Scheduler: React.FC = () => {
                                             endTime: req.type === 'day' ? '16:00' : (req.type === 'night' ? '08:00' : '08:00'),
                                             type: req.type as any,
                                             locationId: dept.id,
-                                            requiredSkills: req.requiredSkills || []
+                                            requiredSkills: req.requiredSkills || [],
+                                            // Optional: Add note about holiday if we want
                                         });
                                     }
                                 });
@@ -136,6 +147,8 @@ const Scheduler: React.FC = () => {
                         });
                     } else {
                         // Fallback
+                        // Default is 24h, so no day shift processing needed here usually.
+                        // But if we had default day shifts, we would filter them too.
                         shiftsToFill.push({
                             id: uuidv4(),
                             date: dateStr,
@@ -212,6 +225,12 @@ const Scheduler: React.FC = () => {
                     >
                         {loading ? t('scheduler.calculating') : t('scheduler.generate')}
                     </Button>
+                </div>
+                <div style={{ marginTop: 16 }}>
+                    <Typography.Text type="secondary" style={{ fontSize: '12px' }}>
+                        <InfoCircleOutlined style={{ marginRight: 4 }} />
+                        {t('scheduler.equalityConfig.holidayInfo', 'Resmi tatillerde otomatik olarak Mesai yazılmaz.')}
+                    </Typography.Text>
                 </div>
             </Card>
 
