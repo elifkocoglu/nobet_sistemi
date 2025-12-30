@@ -58,22 +58,17 @@ export class ConstraintEngine {
             return 0;
         });
 
-        // PRE-CALCULATE VALIDITY COUNTS
-        // ... (Existing Logic) ...
-
-        // We need to know: How many shifts *could* Aysun possibly take?
-        // This allows us to calculate "Scarcity": (Need 4 / Valid 5) = 0.8 Criticality
+        // PRE-CALCULATE VALIDITY COUNTS (Critical for Ratio Scoring)
+        // We need to know: How many *Nöbet* shifts *could* Aysun possibly take?
         const validShiftCounts = new Map<string, number>();
         staff.forEach(p => {
             let validCount = 0;
             shiftsToFill.forEach(s => {
-                // Check static rules only (Skill, Weekend, etc. but NOT dynamic ones like Consecutive)
-                // Actually, checking all constraints is safer.
-                // We simulate "Is this person valid for this shift IF it was the only shift?"
-                const res = this.validateAssignment(s, p, [], true); // Relaxed? No?
-                // Let's use strict validation but with empty schedule.
-                // NOTE: Use relaxed=true to skip quota checks (circular dependency), 
-                // but strict for Skills/Availability.
+                // ONLY COUNT NÖBET OPPORTUNITIES FOR SCARCITY
+                // Mesai availability shouldn't dilute Nöbet urgency.
+                if (s.type === 'day') return;
+
+                const res = this.validateAssignment(s, p, [], true);
                 if (res.isValid) validCount++;
             });
             validShiftCounts.set(p.id, validCount);
@@ -140,48 +135,59 @@ export class ConstraintEngine {
 
             const target = person.exactShifts !== undefined ? person.exactShifts : person.minShifts;
 
-            // 1. QUOTA URGENCY (CRITICALITY RATIO)
-            // Replaces "Flat Boost" with "Smart Boost".
-            if (target !== undefined) {
+            // 1. QUOTA URGENCY (CRITICALITY RATIO + FILL RATE)
+            if (target !== undefined && target > 0) { // Ensure target > 0 to avoid div by zero
                 const remainingNeeded = target - count;
                 if (remainingNeeded > 0) {
                     if (shift.type !== 'day') {
-                        // Criticality = Need / Potential
-                        // Potential = Total Valid - Allocated? 
-                        // Approx: Total Valid (static).
+                        // A. Criticality = Need / Potential
                         const totalValid = validShiftCounts?.get(person.id) || 1;
-                        // Ratio: If Need 4, Potential 5 -> 0.8.
-                        // If Need 5, Potential 20 -> 0.25.
                         const criticality = remainingNeeded / Math.max(1, totalValid);
 
-                        // Boost Factor: 100 Million * Criticality.
-                        // Aysun (0.8) -> 80M.
-                        // Ferhat (0.25) -> 25M.
-                        score += (criticality * 100000000);
+                        // B. Fill Rate Inversion = (1 - (Current / Target))
+                        // 0/4 = 1.0 (Highest Priority)
+                        // 3/4 = 0.25 (Lower Priority)
+                        const emptiness = 1 - (count / target);
 
-                        // Flat boost ensures they still beat "No Quota" people.
+                        // Combined Boost
+                        // Criticality is dominant (Availability constraints).
+                        // Emptiness helps smooth the path (Nobody stays at 0).
+
+                        score += (criticality * 100000000);
+                        score += (emptiness * 50000000);
+
+                        // Flat boost ensures they still beat "No Quota/Met Quota" people.
                         score += 50000000;
                     } else {
-                        // Mesai Check: Still avoid wasting availability
                         score -= 50000;
                     }
                 }
             }
 
-            // 2. PREFERENCE (Medium Priority)
+            // 2. GLOBAL BALANCE (Leftover Handling)
+            // If Quotas are met (or undefined), we want to pull low-count people up.
+            // Büşra (10) vs Fatih (3).
+            // This only effectively applies if they are not in the "Quota Urgency" bracket above.
+            // (Or if Fairness Penalty isn't enough).
+            // Score += (TargetAverage - Count) * 2000
+            // but we don't know average easily.
+            // Just use inverse count.
+            score -= (count * 2000); // Linear penalty on top of quadratic, discourages leading the pack.
+
+            // 3. PREFERENCE (Medium Priority)
             if (equalityConfig?.ignoredPersonIds?.includes(person.id)) {
                 score -= 100000;
             } else if (equalityConfig?.preferredPersonIds?.includes(person.id)) {
                 score += 2000;
             }
 
-            // 3. DISTRIBUTION (Quadratic Fair Penalty)
+            // 4. DISTRIBUTION (Quadratic Fair Penalty)
             // Punish high counts severely to force equality.
             // Increased to 500 to stop hoarding (e.g. Büşra 11 shifts).
             // 11^2 * 500 = 60,500 penalty. (Score base 1000). Highly impactful.
             score -= (count * count * 1000);
 
-            // 3.5 MAX LIMIT AVERSION (Soft Cap)
+            // 4.5 MAX LIMIT AVERSION (Soft Cap)
             if (person.maxShifts !== undefined && count >= person.maxShifts) {
                 // Already AT Max (or above).
                 // Penalize EXTREMELY (-100M) to avoid exceeding unless desperate.
