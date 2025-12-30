@@ -137,6 +137,15 @@ export class ConstraintEngine {
             // Let's use Nöbet Count for fairness to ensure Nöbet equality.
             score -= (count * count * 100);
 
+            // 3.5 MAX LIMIT AVERSION (Soft Cap)
+            // If someone is close to their MAX (e.g. 1 away), we should try to avoid them if possible,
+            // to leave room for emergency fills or manual adjustments later.
+            if (person.maxShifts !== undefined && count >= person.maxShifts - 1) {
+                // They are 1 shift away from Max.
+                // Penalize them heavily so Büşra/Şenol (who have room) get picked instead.
+                score -= 5000;
+            }
+
             // 4. SPACING (Gap Bonus)
             // Ideally we want to pick people who haven't worked in x days.
             // Since we generate sequentially, we can look backwards in the schedule.
