@@ -12,6 +12,7 @@ import { GroupQuotaRule } from '../engine/rules/GroupQuotaRule';
 import { MinMaxQuotaRule } from '../engine/rules/MinMaxQuotaRule';
 import type { IDepartment } from '../engine/types';
 import { OneShiftPerDayRule } from '../engine/rules/OneShiftPerDayRule';
+import { ShiftTransitionRule } from '../engine/rules/ShiftTransitionRule';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../firebase'; // Import Firebase DB
 import { collection, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
@@ -333,8 +334,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             const quotas = rulesConfig['group-quota'].groupQuotas || [];
             activeRules.push(new GroupQuotaRule(quotas));
         }
-        activeRules.push(new OneShiftPerDayRule()); // Always active as per requirement
+        // Always active rules
+        activeRules.push(new OneShiftPerDayRule());
         activeRules.push(new MinMaxQuotaRule());
+
+        // New Transition Rule (Always active or configurable? Making it always active as it's a safety rule requested as "Important")
+        // Alternatively, add to config if user wants to disable.
+        // For now, let's treat it as a fundamental safety rule similar to OneShiftPerDay, 
+        // OR we can make it part of 'shift-type' logic. 
+        // Given the prompt "mesaiye giden biri ertesi gün nöbete gidebilir ama nöbete giden biri ertesi gün mesaiye gidemez", 
+        // this sounds like a hard constraint for this workplace.
+        activeRules.push(new ShiftTransitionRule());
+
         return activeRules;
     };
 

@@ -2,6 +2,13 @@ export type Skill = 'X-Ray' | 'Tomography' | 'MRI' | 'Ultrasound' | 'General';
 
 export type Role = 'Technician' | 'Nurse' | 'Doctor';
 
+export interface IEqualityConfig {
+  applyStrictEquality: boolean;
+  preferredPersonIds: string[]; // Give MORE shifts to these people
+  ignoredPersonIds: string[];   // Give LESS shifts to these people
+}
+
+
 export interface IAvailability {
   unavailableDates: string[]; // ISO Date strings YYYY-MM-DD
 }

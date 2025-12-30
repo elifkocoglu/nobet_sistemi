@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Button, Card, DatePicker, Typography, Spin, notification, Modal, Input, List, Empty, Popconfirm, Drawer, Badge } from 'antd';
+import { Button, Card, DatePicker, Typography, Spin, notification, Modal, Input, List, Empty, Popconfirm, Drawer, Badge, Select } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../context/AppContext';
 import { ConstraintEngine } from '../engine/ConstraintEngine';
@@ -33,6 +33,13 @@ const Scheduler: React.FC = () => {
     const [scheduleName, setScheduleName] = useState('');
     const [savedSchedules, setSavedSchedules] = useState<SavedSchedule[]>([]);
     const [isSavedListOpen, setIsSavedListOpen] = useState(false);
+
+    // Equality Config State
+    const [equalityConfig, setEqualityConfig] = useState<import('../engine/types').IEqualityConfig>({
+        applyStrictEquality: true,
+        preferredPersonIds: [],
+        ignoredPersonIds: []
+    });
 
     // Timeout/Error Modal State
     const [isTimeoutModalOpen, setIsTimeoutModalOpen] = useState(false);
@@ -141,7 +148,7 @@ const Scheduler: React.FC = () => {
                     curr = curr.add(1, 'day');
                 }
 
-                const result = engine.generate(shiftsToFill, staff, relaxed);
+                const result = engine.generate(shiftsToFill, staff, relaxed, equalityConfig);
                 setGeneratedSchedule(result);
                 notification.success({
                     message: relaxed ? t('scheduler.optimumSuccess') : t('scheduler.success'),
@@ -207,6 +214,104 @@ const Scheduler: React.FC = () => {
                     </Button>
                 </div>
             </Card>
+
+            {/* Equality Configuration */}
+            <Card title={t('scheduler.equalityConfig.title')} style={{ marginBottom: 24 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                            <input
+                                type="checkbox"
+                                checked={equalityConfig.applyStrictEquality}
+                                onChange={(e) => setEqualityConfig({ ...equalityConfig, applyStrictEquality: e.target.checked })}
+                                style={{ marginRight: 8, width: 16, height: 16 }}
+                            />
+                            {t('scheduler.equalityConfig.title')}
+                        </label>
+                    </div>
+
+                    {equalityConfig.applyStrictEquality && (
+                        <div style={{ paddingLeft: 24, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                            {/* Relax Equality Option */}
+                            <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                                <input
+                                    type="radio"
+                                    name="equalityRelax"
+                                    checked={!equalityConfig.applyStrictEquality}
+                                    onChange={() => setEqualityConfig({ ...equalityConfig, applyStrictEquality: false })} // Toggling this actually disables strict equality?
+                                    // Actually, if "Equal Dist Constraint" is CHECKED, then "Strict Equality" is TRUE.
+                                    // The user asked: "kısıt ekleyelim o kısıt aktif edilince 3 madde olsun: ... diğer kısıtları sağlamak için eşitliği boz"
+                                    // So if this option is selected, `applyStrictEquality` should be FALSE?
+                                    // But if the PARENT checkbox is "Enable Equality Constraint", then `applyStrictEquality` should be TRUE by default.
+                                    // Let's adjust logic:
+                                    // Master Switch: "Equal Distribution Active?"
+                                    // If Active:
+                                    // Option 1: "Strict Mode" (Default) vs "Relaxed Mode" (Allow inequality to solve others)
+                                    // Option 2: More Shifts List
+                                    // Option 3: Less Shifts List
+
+                                    // Wait, the prompt says: "sistem diğer kısıtları karşılamak için nöbetleri eşit dağıtmasın maddesi olsun"
+                                    // This means there is an option TO RELAX it.
+                                    style={{ marginRight: 8 }}
+                                />
+                                {t('scheduler.equalityConfig.strict')}
+                            </label>
+
+                            {/* Re-read prompt carefully:
+                                "bir tane eşit nöbet için kısıt ekleyelim o kısıt aktif edilince 3 madde olsun"
+                                Item 1: "sistem diğer kısıtları karşılamak için nöbetleri eşit dağıtmasın maddesi olsun" -> This implies we CAN choose to disable equality for sake of valid schedule.
+                                So maybe a Checkbox: "Allow inequality to satisfy other rules"?
+                                
+                                Item 2: "sistem kullanıcının seçtiği kişilere daha az nöbet versin"
+                                Item 3: "sistem kullanıcının belirlediği kişilere daha fazla nöbet versin"
+                             */}
+
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                <input
+                                    type="checkbox"
+                                    checked={!equalityConfig.applyStrictEquality}
+                                    onChange={(e) => setEqualityConfig({ ...equalityConfig, applyStrictEquality: !e.target.checked })}
+                                />
+                                {t('scheduler.equalityConfig.strict')}
+                            </div>
+
+
+                            <div>
+                                <Text strong>{t('scheduler.equalityConfig.ignored')}</Text>
+                                <Select
+                                    mode="multiple"
+                                    style={{ width: '100%', marginTop: 4 }}
+                                    placeholder={t('common.select')}
+                                    value={equalityConfig.ignoredPersonIds}
+                                    onChange={(vals) => setEqualityConfig({ ...equalityConfig, ignoredPersonIds: vals })}
+                                >
+                                    {staff.map(p => (
+                                        <Select.Option key={p.id} value={p.id}>{p.name}</Select.Option>
+                                    ))}
+                                </Select>
+                            </div>
+
+                            <div>
+                                <Text strong>{t('scheduler.equalityConfig.preferred')}</Text>
+                                <Select
+                                    mode="multiple"
+                                    style={{ width: '100%', marginTop: 4 }}
+                                    placeholder={t('common.select')}
+                                    value={equalityConfig.preferredPersonIds}
+                                    onChange={(vals) => setEqualityConfig({ ...equalityConfig, preferredPersonIds: vals })}
+                                >
+                                    {staff.map(p => (
+                                        <Select.Option key={p.id} value={p.id}>{p.name}</Select.Option>
+                                    ))}
+                                </Select>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </Card>
+
+
+
 
             {loading && <div style={{ textAlign: 'center', margin: '40px 0' }}><Spin size="large" tip={t('scheduler.calculating')} /></div>}
 

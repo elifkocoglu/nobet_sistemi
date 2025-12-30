@@ -81,6 +81,12 @@ export const resources = {
                     timeoutOrStrict: 'Constraints too tight or Calculation Timed Out',
                     timeoutDesc: 'The schedule is very hard to generate with current rules. Would you like to generate the best possible schedule by relaxing quota limits?',
                     error: 'Error',
+                    equalityConfig: {
+                        title: 'Equal Distribution Constraint',
+                        strict: 'Relax equality to satisfy other constraints',
+                        preferred: 'Assign MORE shifts to:',
+                        ignored: 'Assign LESS shifts to:',
+                    },
                     failure: 'Failed to generate schedule',
                     calculating: 'Calculating...',
                     desc: 'Select a date range to generate the schedule automatically.',
@@ -229,7 +235,13 @@ export const resources = {
                 optimumDesc: 'Çözüm bulmak için bazı kotalar esnetildi.',
                 timeoutOrStrict: 'Kısıtlamalar Çok Sıkı veya Zaman Aşımı',
                 timeoutDesc: 'Mevcut kurallarla liste oluşturmak çok zor. Kota sınırlarını esneterek en iyi olası listeyi oluşturmak ister misiniz?',
-                error: 'Hata'
+                error: 'Hata',
+                equalityConfig: {
+                    title: 'Eşit Dağılım Kısıtı',
+                    strict: 'Diğer kısıtları sağlamak için eşitliği boz',
+                    preferred: 'Daha fazla nöbet tutacaklar',
+                    ignored: 'Daha az nöbet tutacaklar',
+                }
             },
             savedSchedules: {
                 title: 'Kayıtlı Listeler',
