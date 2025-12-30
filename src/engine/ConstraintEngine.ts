@@ -36,7 +36,6 @@ export class ConstraintEngine {
     ): IShift[] {
         // Simple Backtracking Algorithm
         const startTime = Date.now();
-        const startTime = Date.now();
         const TIMEOUT_MS = 5000; // Increased to 5s for robust pre-calc
 
         // PRE-CALCULATE VALIDITY COUNTS (Critical for Ratio Scoring)
