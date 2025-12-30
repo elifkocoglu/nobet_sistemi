@@ -103,20 +103,21 @@ export class ConstraintEngine {
             const target = person.exactShifts !== undefined ? person.exactShifts : person.minShifts;
 
             // 1. QUOTA URGENCY (Absolute Priority)
-            // CRITICAL FIX: Only boost if this specific shift helps them meet the quota!
-            // If they need "Nöbet" (Non-Day), don't boost them for "Mesai" (Day).
-            // Assigning a Mesai shift would actually HURT them by consuming a valid day.
+            // CRITICAL FIX 2: Use FLAT boost.
+            // Previously `remainingNeeded * 1M` biased towards people with HUGE quotas (Min 10 beats Min 3).
+            // This caused Nurullah (Min 10) to eat all early January shifts, leaving none for Hatice (Min 3) who is only free early Jan.
+            // NOW: Everyone below quota gets the SAME massive boost. Tie-breaker is 'Count' (Fairness).
             if (target !== undefined) {
                 const remainingNeeded = target - count;
                 if (remainingNeeded > 0) {
                     // Check if this shift helps (is NOT day)
                     if (shift.type !== 'day') {
-                        // Urgency: Boost MASSIVELY to ensure they get picked if valid.
-                        score += 10000000;
-                        score += remainingNeeded * 1000000;
+                        // Urgency: Boost MASSIVELY (Flat).
+                        score += 100000000;
+                        // Small bonus for "More Need" just to break ties if counts are equal? 
+                        // No, stick to fairness (low count wins).
                     } else {
-                        // If this is a DAY shift, and they are desperate for Nöbet...
-                        // We should actively AVOID giving them this day shift, so they stay free for Nöbet.
+                        // Avoid wasting availability on Mesai
                         score -= 50000;
                     }
                 }
