@@ -26,14 +26,14 @@ export class MinMaxQuotaRule implements IRule {
         // Validation logic for adding ONE MORE shift (current attempt):
         const potentialCount = currentCount + 1;
 
-        if (person.maxShifts !== undefined && potentialCount > person.maxShifts) {
+        if (person.maxShifts !== undefined && person.maxShifts !== null && potentialCount > person.maxShifts) {
             return {
                 isValid: false,
                 reason: `${person.name} exceeds max quota of ${person.maxShifts}.`
             };
         }
 
-        if (person.exactShifts !== undefined && potentialCount > person.exactShifts) {
+        if (person.exactShifts !== undefined && person.exactShifts !== null && potentialCount > person.exactShifts) {
             return {
                 isValid: false,
                 reason: `${person.name} exceeds exact quota of ${person.exactShifts}.`
